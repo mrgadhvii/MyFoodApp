@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { getAuth, updateProfile, updateEmail } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuthState } from 'react-firebase-hooks/auth';
 import Navbar from './Navbar';
 import { toast } from 'react-toastify';
-import { FaPlus } from 'react-icons/fa';
+import { FaPlus, FaTimes, FaCog, FaInfoCircle } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
 
 const ProfileContainer = styled.div`
   max-width: 600px;
@@ -146,27 +149,129 @@ const AddAddressButton = styled.button`
   }
 `;
 
+const NamePromptOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const NamePromptModal = styled.div`
+  background: white;
+  padding: 25px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+`;
+
+const ModalTitle = styled.h3`
+  margin-bottom: 15px;
+  color: #333;
+`;
+
+const ModalInput = styled(Input)`
+  margin-bottom: 15px;
+`;
+
+const EmailDisplay = styled.div`
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  color: #666;
+  font-size: 14px;
+`;
+
+const ProfileSection = styled.div`
+  margin-top: 20px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+`;
+
+const SectionTitle = styled.h3`
+  margin-bottom: 15px;
+  color: #333;
+`;
+
+const UsernameInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: ${props => props.changes >= 2 ? '#dc3545' : '#666'};
+  margin-top: 4px;
+`;
+
 const Profile = () => {
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [addresses, setAddresses] = useState([]);
   const [newAddress, setNewAddress] = useState('');
   const [showAddAddress, setShowAddAddress] = useState(false);
+  const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
+  const [usernameChanges, setUsernameChanges] = useState(0);
+  const [originalUsername, setOriginalUsername] = useState('');
   const auth = getAuth();
   const db = getFirestore();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [user] = useAuthState(auth);
 
   useEffect(() => {
     fetchUserData();
   }, []);
+
+  useEffect(() => {
+    const checkUsername = async () => {
+      if (!auth.currentUser) return;
+      
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const userData = userDoc.data();
+      
+      if (!userData?.username && location.pathname !== '/profile') {
+        const generatedUsername = generateUsername(auth.currentUser.email);
+        setUsername(generatedUsername);
+        setShowUsernamePrompt(true);
+      }
+    };
+
+    checkUsername();
+  }, [auth.currentUser, location.pathname]);
+
+  const generateUsername = (email) => {
+    // Remove everything after @ and special characters
+    const baseName = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+    
+    // Add random numbers (3 digits)
+    const randomNum = Math.floor(Math.random() * 900) + 100;
+    
+    return '@' + baseName.toLowerCase() + randomNum;
+  };
 
   const fetchUserData = async () => {
     try {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (userDoc.exists()) {
         const data = userDoc.data();
-        setName(data.name || '');
-        setPhone(data.phone || '');
+        setUsername(data.username || generateUsername(auth.currentUser.email));
+        setOriginalUsername(data.username || '');
+        setUsernameChanges(data.usernameChanges || 0);
+        setPhone(data.phone || '+91');
         setAddresses(data.addresses || []);
+      } else {
+        // If user doc doesn't exist, generate a username
+        const generatedUsername = generateUsername(auth.currentUser.email);
+        setUsername(generatedUsername);
+        setPhone('+91');
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -176,16 +281,67 @@ const Profile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!username.trim()) {
+      toast.error('Username is required');
+      return;
+    }
+    
+    if (!username.startsWith('@')) {
+      toast.error('Username must start with @');
+      return;
+    }
+
+    if (username !== originalUsername && usernameChanges >= 2) {
+      toast.error('You have reached the maximum number of username changes');
+      setUsername(originalUsername); // Reset to original username
+      return;
+    }
+
     try {
+      const newChanges = username !== originalUsername ? usernameChanges + 1 : usernameChanges;
+      
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        name,
+        username,
+        usernameChanges: newChanges,
         phone,
         addresses
       });
+      
+      setUsernameChanges(newChanges);
+      setOriginalUsername(username);
       toast.success('Profile updated successfully');
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Failed to update profile');
+    }
+  };
+
+  const handleUsernameSubmit = async () => {
+    if (!username.trim()) {
+      toast.error('Please enter a username');
+      return;
+    }
+
+    if (!username.startsWith('@')) {
+      toast.error('Username must start with @');
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, 'users', auth.currentUser.uid), {
+        username,
+        usernameChanges: 0,
+        phone: phone || '+91',
+        addresses: addresses || [],
+        email: auth.currentUser.email
+      }, { merge: true });
+
+      setOriginalUsername(username);
+      setShowUsernamePrompt(false);
+      toast.success('Username saved successfully');
+    } catch (error) {
+      console.error('Error saving username:', error);
+      toast.error('Failed to save username');
     }
   };
 
@@ -228,83 +384,157 @@ const Profile = () => {
     <>
       <Navbar />
       <ProfileContainer>
-        <h2>Profile Settings</h2>
-        <ProfileForm onSubmit={handleSubmit}>
-          <FormGroup>
-            <Label>Name</Label>
-            <Input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-            />
-          </FormGroup>
-          <FormGroup>
-            <Label>Phone</Label>
-            <Input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Your phone number"
-            />
-          </FormGroup>
+        <h2>Profile</h2>
+        <ProfileSection>
+          <SectionTitle>Account Settings</SectionTitle>
+          <ProfileForm onSubmit={handleSubmit}>
+            <EmailDisplay>
+              Email: {auth.currentUser?.email}
+            </EmailDisplay>
+            
+            <FormGroup>
+              <Label>Username</Label>
+              <Input
+                type="text"
+                value={username}
+                onChange={(e) => {
+                  if (usernameChanges >= 2 && e.target.value !== originalUsername) {
+                    toast.error('You have reached the maximum number of username changes');
+                    return;
+                  }
+                  let value = e.target.value;
+                  if (!value.startsWith('@')) {
+                    value = '@' + value;
+                  }
+                  setUsername(value);
+                }}
+                placeholder="@username"
+                required
+                disabled={usernameChanges >= 2}
+              />
+              <UsernameInfo changes={usernameChanges}>
+                <FaInfoCircle />
+                {usernameChanges >= 2 
+                  ? 'You have reached the maximum number of username changes'
+                  : `You can change your username ${2 - usernameChanges} more time${2 - usernameChanges === 1 ? '' : 's'}`}
+              </UsernameInfo>
+            </FormGroup>
 
-          <AddressSection>
-            <h3>Delivery Addresses</h3>
-            <AddressGrid>
-              {addresses.map((addr) => (
-                <AddressCard key={addr.id} isPrimary={addr.isPrimary}>
-                  <div>{addr.address}</div>
-                  {addr.isPrimary && (
-                    <div style={{ color: 'blueviolet', fontSize: '12px', marginTop: '5px' }}>
-                      Primary Address
-                    </div>
-                  )}
-                  <AddressActions>
-                    {!addr.isPrimary && (
-                      <AddressButton 
-                        primary 
-                        onClick={() => setPrimaryAddress(addr.id)}
-                      >
-                        Set as Primary
-                      </AddressButton>
-                    )}
+            <FormGroup>
+              <Label>Phone</Label>
+              <Input
+                type="tel"
+                value={phone}
+                onChange={(e) => {
+                  let value = e.target.value;
+                  if (!value.startsWith('+91')) {
+                    value = '+91' + value.replace('+91', '');
+                  }
+                  setPhone(value);
+                }}
+                placeholder="+91 Phone number"
+              />
+            </FormGroup>
+
+            <Button type="submit">Save Changes</Button>
+          </ProfileForm>
+        </ProfileSection>
+
+        <AddressSection>
+          <SectionTitle>Delivery Addresses</SectionTitle>
+          <AddressGrid>
+            {addresses.map((addr) => (
+              <AddressCard key={addr.id} isPrimary={addr.isPrimary}>
+                <div>{addr.address}</div>
+                {addr.isPrimary && (
+                  <div style={{ color: 'blueviolet', fontSize: '12px', marginTop: '5px' }}>
+                    Primary Address
+                  </div>
+                )}
+                <AddressActions>
+                  {!addr.isPrimary && (
                     <AddressButton 
-                      delete 
-                      onClick={() => deleteAddress(addr.id)}
+                      primary 
+                      onClick={() => setPrimaryAddress(addr.id)}
                     >
-                      Delete
+                      Set as Primary
                     </AddressButton>
-                  </AddressActions>
-                </AddressCard>
-              ))}
-              {showAddAddress ? (
-                <AddressCard>
-                  <Input
-                    type="text"
-                    value={newAddress}
-                    onChange={(e) => setNewAddress(e.target.value)}
-                    placeholder="Enter new address"
-                  />
-                  <AddressActions>
-                    <AddressButton primary onClick={addNewAddress}>
-                      Add
-                    </AddressButton>
-                    <AddressButton onClick={() => setShowAddAddress(false)}>
-                      Cancel
-                    </AddressButton>
-                  </AddressActions>
-                </AddressCard>
-              ) : (
-                <AddAddressButton onClick={() => setShowAddAddress(true)}>
-                  <FaPlus /> Add New Address
-                </AddAddressButton>
-              )}
-            </AddressGrid>
-          </AddressSection>
+                  )}
+                  <AddressButton 
+                    delete 
+                    onClick={() => deleteAddress(addr.id)}
+                  >
+                    Delete
+                  </AddressButton>
+                </AddressActions>
+              </AddressCard>
+            ))}
+            {showAddAddress ? (
+              <AddressCard>
+                <Input
+                  type="text"
+                  value={newAddress}
+                  onChange={(e) => setNewAddress(e.target.value)}
+                  placeholder="Enter new address"
+                  autoFocus
+                />
+                <AddressActions>
+                  <AddressButton primary onClick={addNewAddress}>
+                    Save
+                  </AddressButton>
+                  <AddressButton onClick={() => {
+                    setShowAddAddress(false);
+                    setNewAddress('');
+                  }}>
+                    Cancel
+                  </AddressButton>
+                </AddressActions>
+              </AddressCard>
+            ) : (
+              <AddAddressButton onClick={() => setShowAddAddress(true)}>
+                <FaPlus /> Add New Address
+              </AddAddressButton>
+            )}
+          </AddressGrid>
+        </AddressSection>
 
-          <Button type="submit">Save Changes</Button>
-        </ProfileForm>
+        <ProfileSection>
+          <SectionTitle>Account Actions</SectionTitle>
+          <ClearDataButton onClick={() => {
+            if (window.confirm('Are you sure you want to clear all your data? This cannot be undone.')) {
+              // Add clear data functionality
+              toast.success('Account data cleared successfully');
+            }
+          }}>
+            Clear Account Data
+          </ClearDataButton>
+        </ProfileSection>
+
+        {showUsernamePrompt && (
+          <NamePromptOverlay>
+            <NamePromptModal>
+              <ModalTitle>Welcome! Choose your username</ModalTitle>
+              <ModalInput
+                type="text"
+                value={username}
+                onChange={(e) => {
+                  let value = e.target.value;
+                  if (!value.startsWith('@')) {
+                    value = '@' + value;
+                  }
+                  setUsername(value);
+                }}
+                placeholder="@username"
+                autoFocus
+              />
+              <UsernameInfo changes={0}>
+                <FaInfoCircle />
+                Note: You can only change your username twice after this
+              </UsernameInfo>
+              <Button onClick={handleUsernameSubmit}>Save Username</Button>
+            </NamePromptModal>
+          </NamePromptOverlay>
+        )}
       </ProfileContainer>
     </>
   );

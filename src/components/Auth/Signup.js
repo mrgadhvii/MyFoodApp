@@ -1,159 +1,162 @@
 import React, { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
+import { doc, setDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { useNavigate, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
-import { auth, db } from '../../firebase';
+import { db } from '../../firebase';
 
-const SignupContainer = styled.div`
+const Container = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  background: #f8f9fa;
   padding: 20px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 `;
 
-const SignupForm = styled.form`
+const FormContainer = styled.div`
   background: white;
   padding: 40px;
-  border-radius: 20px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   width: 100%;
   max-width: 400px;
-  position: relative;
-  overflow: hidden;
+`;
 
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 5px;
-    background: linear-gradient(90deg, #ff9a9e 0%, #fad0c4 99%, #fad0c4 100%);
-  }
+const Title = styled.h2`
+  text-align: center;
+  color: blueviolet;
+  margin-bottom: 30px;
+  font-size: 1.8rem;
+  font-weight: 600;
+`;
 
-  h2 {
-    margin: 0 0 30px;
-    color: #333;
-    font-size: 28px;
-    font-weight: 600;
-    text-align: center;
-  }
+const Form = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 25px;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 `;
 
 const Label = styled.label`
-  display: block;
-  margin-bottom: 8px;
-  color: #555;
-  font-size: 14px;
-  font-weight: 500;
-  transition: color 0.3s ease;
+  color: #636e72;
+  font-size: 0.9rem;
 `;
 
 const Input = styled.input`
   width: 100%;
-  padding: 12px 15px;
-  border: 2px solid #eee;
-  border-radius: 10px;
-  font-size: 16px;
-  transition: all 0.3s ease;
-  background: #f8f9fa;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #ff9a9e;
-    background: white;
-    box-shadow: 0 0 0 3px rgba(255, 154, 158, 0.1);
-  }
-
-  &::placeholder {
-    color: #aaa;
+    border-color: blueviolet;
+    box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.1);
   }
 `;
 
 const Button = styled.button`
   width: 100%;
-  padding: 14px;
-  background: linear-gradient(90deg, #ff9a9e 0%, #fad0c4 99%, #fad0c4 100%);
+  padding: 12px;
+  background: blueviolet;
   color: white;
   border: none;
-  border-radius: 10px;
-  font-size: 16px;
+  border-radius: 8px;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  margin-bottom: 20px;
+  transition: opacity 0.2s;
 
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 7px 14px rgba(0,0,0,0.1);
-  }
-
-  &:active {
-    transform: translateY(1px);
+    opacity: 0.9;
   }
 
   &:disabled {
     background: #ccc;
     cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
   }
 `;
 
-const ErrorText = styled.div`
-  color: #ff4444;
-  font-size: 14px;
-  margin: 10px 0;
-  text-align: center;
-  padding: 10px;
-  background: #fff1f1;
-  border-radius: 8px;
-  border: 1px solid #ffe0e0;
-`;
-
-const LoginLink = styled(Link)`
+const StyledLink = styled(Link)`
   display: block;
   text-align: center;
-  color: #666;
-  text-decoration: none;
-  font-size: 14px;
   margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid #eee;
+  color: blueviolet;
+  text-decoration: none;
+  font-weight: 500;
 
-  span {
-    color: #ff9a9e;
-    font-weight: 500;
-    
-    &:hover {
-      text-decoration: underline;
-    }
+  &:hover {
+    text-decoration: underline;
   }
 `;
 
-const Signup = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+const ErrorText = styled.p`
+  color: #ff4757;
+  font-size: 0.9rem;
+  margin: 0;
+`;
+
+const SignUp = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
   const navigate = useNavigate();
+  const auth = getAuth();
 
-  const handleSignup = async (e) => {
+  const generateUsername = async (name, email) => {
+    let baseUsername = name 
+      ? name.toLowerCase().replace(/[^a-z0-9]/g, '')
+      : email.split('@')[0].replace(/[^a-z0-9]/g, '');
+    
+    let username = baseUsername;
+    let counter = 0;
+    let isUnique = false;
+
+    while (!isUnique && counter < 100) {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('username', '==', username));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        isUnique = true;
+      } else {
+        counter++;
+        username = `${baseUsername}${Math.floor(Math.random() * 1000)}`;
+      }
+    }
+
+    if (!isUnique) {
+      username = `user${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    return username;
+  };
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!email || !password || !confirmPassword) {
+    const { name, email, password, confirmPassword } = formData;
+
+    if (!name || !email || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
@@ -163,97 +166,101 @@ const Signup = () => {
       return;
     }
 
+    if (password.length < 6) {
+      setError('Password should be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // Create user document in Firestore
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
+      const user = userCredential.user;
+
+      const username = await generateUsername(name, email);
+
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name,
         email,
-        createdAt: new Date().toISOString(),
-        addresses: []
+        username,
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       });
 
       toast.success('Account created successfully!');
-      // Redirect to add phone number
-      navigate('/add-phone');
+      navigate('/');
     } catch (error) {
       console.error('Signup error:', error);
-      let errorMessage = 'Failed to create account.';
-      
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'This email is already registered.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email format.';
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = 'Email/password accounts are not enabled.';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'Please use a stronger password.';
-          break;
-        default:
-          errorMessage = 'Error creating account. Please try again.';
-      }
-      
-      setError(errorMessage);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SignupContainer>
-      <SignupForm onSubmit={handleSignup}>
-        <h2>Create Account</h2>
-        
-        <FormGroup>
-          <Label>Email</Label>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email"
-            required
-          />
-        </FormGroup>
+    <Container>
+      <FormContainer>
+        <Title>Create Account</Title>
+        <Form onSubmit={handleSubmit}>
+          <FormGroup>
+            <Label>Name</Label>
+            <Input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="Enter your name"
+            />
+          </FormGroup>
 
-        <FormGroup>
-          <Label>Password</Label>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Create password"
-            required
-          />
-        </FormGroup>
+          <FormGroup>
+            <Label>Email</Label>
+            <Input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Enter your email"
+            />
+          </FormGroup>
 
-        <FormGroup>
-          <Label>Confirm Password</Label>
-          <Input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm password"
-            required
-          />
-        </FormGroup>
+          <FormGroup>
+            <Label>Password</Label>
+            <Input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter password"
+            />
+          </FormGroup>
 
-        {error && <ErrorText>{error}</ErrorText>}
+          <FormGroup>
+            <Label>Confirm Password</Label>
+            <Input
+              type="password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              placeholder="Confirm password"
+            />
+          </FormGroup>
 
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Creating Account...' : 'Sign Up'}
-        </Button>
+          {error && <ErrorText>{error}</ErrorText>}
 
-        <LoginLink to="/login">
-          Already have an account? <span>Login</span>
-        </LoginLink>
-      </SignupForm>
-    </SignupContainer>
+          <Button type="submit" disabled={loading}>
+            {loading ? 'Creating Account...' : 'Sign Up'}
+          </Button>
+        </Form>
+
+        <StyledLink to="/login">
+          Already have an account? Login here
+        </StyledLink>
+      </FormContainer>
+    </Container>
   );
 };
 
-export default Signup;
+export default SignUp;

@@ -4,284 +4,332 @@ import { getAuth } from 'firebase/auth';
 import {
   getFirestore,
   collection,
-  addDoc,
   query,
   orderBy,
   onSnapshot,
+  addDoc,
   serverTimestamp,
   updateDoc,
   doc,
+  arrayUnion,
+  getDoc,
+  setDoc,
   writeBatch,
   increment
 } from 'firebase/firestore';
+import { FaArrowLeft, FaPaperPlane } from 'react-icons/fa';
 import { format } from 'date-fns';
-import { ToastContainer, toast } from 'react-toastify';
-import { FaCheck, FaCheckDouble } from 'react-icons/fa';
 
-const ChatWindow = styled.div`
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80%;
-  max-width: 600px;
-  height: 80vh;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+const MessagesContainer = styled.div`
+  flex: 1;
   display: flex;
   flex-direction: column;
-  z-index: 1000;
-`;
-
-const ChatHeader = styled.div`
-  padding: 15px;
-  background: #075e54;
-  color: white;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  color: white;
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 0;
-  margin: 0;
-`;
-
-const MessageList = styled.div`
-  flex-grow: 1;
-  padding: 20px;
-  overflow-y: auto;
-  background: #e5ddd5;
-  display: flex;
-  flex-direction: column;
-`;
-
-const Message = styled.div`
-  max-width: 70%;
-  padding: 8px 12px;
-  margin: 4px 0;
-  border-radius: 7.5px;
+  background: #f0f2f5;
   position: relative;
-  align-self: ${props => props.sent ? 'flex-end' : 'flex-start'};
-  background: ${props => props.sent ? '#dcf8c6' : 'white'};
-  margin-bottom: 20px;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    ${props => props.sent ? 'right: -8px' : 'left: -8px'};
-    width: 0;
-    height: 0;
-    border-top: 6px solid ${props => props.sent ? '#dcf8c6' : 'white'};
-    border-right: 6px solid transparent;
-    border-left: 6px solid transparent;
-    transform: ${props => props.sent ? 'rotate(-45deg)' : 'rotate(45deg)'};
+  
+  @media (max-width: 768px) {
+    width: 100%;
+    height: 100vh;
   }
 `;
 
-const MessageTime = styled.span`
-  position: absolute;
-  bottom: -18px;
-  right: 0;
-  font-size: 0.7rem;
-  color: rgba(0, 0, 0, 0.45);
+const MessagesHeader = styled.div`
+  padding: 16px;
+  background: #f0f2f5;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 12px;
+  border-bottom: 1px solid #e0e0e0;
+`;
+
+const BackButton = styled.button`
+  background: none;
+  border: none;
+  color: #54656f;
+  cursor: pointer;
+  padding: 8px;
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: block;
+  }
+`;
+
+const MessagesList = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+`;
+
+const MessageBubble = styled.div`
+  max-width: 65%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  position: relative;
+  word-wrap: break-word;
+  
+  ${props => props.sent ? `
+    background: #dcf8c6;
+    align-self: flex-end;
+    border-top-right-radius: 0;
+  ` : `
+    background: white;
+    align-self: flex-start;
+    border-top-left-radius: 0;
+  `}
+`;
+
+const MessageTime = styled.span`
+  font-size: 11px;
+  color: #667781;
+  float: right;
+  margin-left: 8px;
+  margin-top: 2px;
 `;
 
 const MessageStatus = styled.span`
   font-size: 12px;
-  margin-left: 5px;
-  color: ${props => props.isRead ? '#0084ff' : '#999'};
+  color: ${props => props.isRead ? '#34b7f1' : '#aaa'};
+  margin-left: 4px;
 `;
 
 const InputContainer = styled.div`
-  padding: 15px;
-  background: #f0f0f0;
+  padding: 16px;
+  background: #f0f2f5;
   display: flex;
-  gap: 10px;
   align-items: center;
+  gap: 12px;
 `;
 
-const Input = styled.input`
-  flex-grow: 1;
-  padding: 10px 15px;
+const MessageInput = styled.input`
+  flex: 1;
+  padding: 12px;
   border: none;
-  border-radius: 20px;
+  border-radius: 24px;
   outline: none;
-  font-size: 1rem;
-
-  &:focus {
-    outline: none;
+  font-size: 15px;
+  background: white;
+  
+  &::placeholder {
+    color: #667781;
   }
 `;
 
 const SendButton = styled.button`
-  background: #128c7e;
-  color: white;
+  background: none;
   border: none;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: #54656f;
   cursor: pointer;
-  transition: background 0.2s;
-
-  &:hover {
-    background: #075e54;
-  }
-
+  padding: 8px;
+  
   &:disabled {
-    background: #ccc;
+    color: #b3b3b3;
     cursor: not-allowed;
   }
 `;
 
-const Overlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-`;
+const formatMessageTime = (timestamp) => {
+  if (!timestamp || !timestamp.toDate) return '';
+  try {
+    return format(timestamp.toDate(), 'HH:mm');
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return '';
+  }
+};
 
-const ChatMessages = ({ chatId, recipientEmail, onClose }) => {
-  const [messageText, setMessageText] = useState('');
-  const [messages, setMessages] = useState([]);
-  const messageListRef = useRef(null);
+const Message = ({ message, isOwnMessage }) => {
+  const [isRead, setIsRead] = useState(false);
   const auth = getAuth();
   const db = getFirestore();
 
   useEffect(() => {
-    if (!chatId) return;
+    if (!isOwnMessage || !message?.id || !message?.receiverId) return;
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'chats', message.chatId, 'messages', message.id), 
+      (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setIsRead(data.readBy?.includes(message.receiverId) || false);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [message?.id, message?.receiverId, isOwnMessage, db]);
+
+  return (
+    <MessageBubble sent={isOwnMessage}>
+      {message.text}
+      <MessageTime>
+        {formatMessageTime(message.timestamp)}
+        {isOwnMessage && (
+          <MessageStatus isRead={isRead}>
+            {isRead ? '✓✓' : '✓'}
+          </MessageStatus>
+        )}
+      </MessageTime>
+    </MessageBubble>
+  );
+};
+
+const ChatMessages = ({ chatId, onBack, showBackButton = true, isBlocked }) => {
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [otherUserId, setOtherUserId] = useState(null);
+  const messagesEndRef = useRef(null);
+  const auth = getAuth();
+  const db = getFirestore();
+
+  useEffect(() => {
+    if (!chatId || !auth.currentUser) return;
+
+    const [user1, user2] = chatId.split('_');
+    const otherId = user1 === auth.currentUser.uid ? user2 : user1;
+    setOtherUserId(otherId);
+  }, [chatId, auth.currentUser]);
+
+  useEffect(() => {
+    if (!chatId || !auth.currentUser || !otherUserId) return;
 
     const messagesRef = collection(db, 'chats', chatId, 'messages');
     const q = query(messagesRef, orderBy('timestamp', 'asc'));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const messagesList = [];
-      snapshot.forEach((doc) => {
-        messagesList.push({
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const newMessages = [];
+      const batch = writeBatch(db);
+      let unreadCount = 0;
+
+      snapshot.docs.forEach(doc => {
+        const messageData = doc.data();
+        const timestamp = messageData.timestamp || serverTimestamp();
+        
+        if (!messageData.readBy?.includes(auth.currentUser.uid) && 
+            messageData.senderId !== auth.currentUser.uid) {
+          batch.update(doc.ref, {
+            readBy: arrayUnion(auth.currentUser.uid)
+          });
+          unreadCount++;
+        }
+        newMessages.push({
           id: doc.id,
-          ...doc.data()
+          chatId,
+          ...messageData,
+          timestamp,
+          receiverId: messageData.senderId === auth.currentUser.uid ? otherUserId : auth.currentUser.uid
         });
       });
-      setMessages(messagesList);
-      scrollToBottom();
 
-      // Mark messages as read
-      const batch = writeBatch(db);
-      snapshot.docs.forEach((doc) => {
-        const message = doc.data();
-        if (!message.read && message.senderId !== auth.currentUser.uid) {
-          batch.update(doc.ref, { read: true });
-        }
-      });
-      batch.commit();
+      // Update unread count in chat document
+      if (unreadCount > 0) {
+        const chatRef = doc(db, 'chats', chatId);
+        batch.update(chatRef, {
+          [`unreadCount.${auth.currentUser.uid}`]: 0
+        });
+      }
+
+      await batch.commit();
+      setMessages(newMessages);
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     });
 
     return () => unsubscribe();
-  }, [chatId, db, auth.currentUser]);
+  }, [chatId, auth.currentUser, db, otherUserId]);
 
-  const sendMessage = async (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!messageText.trim()) return;
+    if (!newMessage.trim() || isBlocked) return;
+
+    const messageText = newMessage.trim(); 
+    setNewMessage(''); 
+
+    const messageRef = doc(collection(db, 'chats', chatId, 'messages'));
+    const chatRef = doc(db, 'chats', chatId);
+
+    const batch = writeBatch(db);
+
+    batch.set(messageRef, {
+      text: messageText,
+      senderId: auth.currentUser.uid,
+      receiverId: otherUserId,
+      timestamp: serverTimestamp(),
+      readBy: [auth.currentUser.uid]
+    });
+
+    batch.update(chatRef, {
+      lastMessage: messageText,
+      lastMessageTime: serverTimestamp(),
+      [`unreadCount.${otherUserId}`]: increment(1)
+    });
 
     try {
-      const messagesRef = collection(db, 'chats', chatId, 'messages');
-      const chatRef = doc(db, 'chats', chatId);
-      
-      await addDoc(messagesRef, {
-        text: messageText,
-        senderId: auth.currentUser.uid,
-        senderEmail: auth.currentUser.email,
-        timestamp: serverTimestamp(),
-        read: false
-      });
-
-      // Update last message in chat
-      await updateDoc(chatRef, {
-        lastMessage: messageText,
-        lastMessageTime: serverTimestamp(),
-        unreadCount: increment(1)
-      });
-
-      setMessageText('');
-      scrollToBottom();
+      await batch.commit();
     } catch (error) {
       console.error('Error sending message:', error);
-      toast.error('Failed to send message');
-    }
-  };
-
-  const scrollToBottom = () => {
-    if (messageListRef.current) {
-      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
-    }
-  };
-
-  const getMessageStatus = (message) => {
-    if (!message.read) {
-      return <MessageStatus><FaCheck /></MessageStatus>;
-    } else {
-      return <MessageStatus isRead><FaCheckDouble /></MessageStatus>;
+      setNewMessage(messageText); 
     }
   };
 
   return (
-    <>
-      <Overlay onClick={onClose} />
-      <ChatWindow>
-        <ChatHeader>
-          <div>{recipientEmail}</div>
-          <CloseButton onClick={onClose}>×</CloseButton>
-        </ChatHeader>
-
-        <MessageList ref={messageListRef}>
-          {messages.map((msg) => (
-            <Message
-              key={msg.id}
-              sent={msg.senderId === auth.currentUser.uid}
-            >
-              {msg.text}
-              <MessageTime>
-                {msg.timestamp ? format(msg.timestamp.toDate(), 'HH:mm') : ''}
-                {msg.senderId === auth.currentUser.uid && getMessageStatus(msg)}
-              </MessageTime>
-            </Message>
-          ))}
-        </MessageList>
-
-        <InputContainer>
-          <Input
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            placeholder="Type a message"
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage(e)}
+    <MessagesContainer>
+      <MessagesHeader>
+        {showBackButton && (
+          <BackButton onClick={onBack}>
+            <FaArrowLeft /> Back
+          </BackButton>
+        )}
+      </MessagesHeader>
+      
+      <MessagesList>
+        {messages.map((message) => (
+          <Message
+            key={message.id}
+            message={message}
+            isOwnMessage={message.senderId === auth.currentUser?.uid}
           />
-          <SendButton
-            onClick={sendMessage}
-            disabled={!messageText.trim()}
-          >
-            →
-          </SendButton>
-        </InputContainer>
-      </ChatWindow>
-    </>
+        ))}
+        <div ref={messagesEndRef} />
+      </MessagesList>
+      
+      <InputContainer>
+        <MessageInput
+          type="text"
+          placeholder={isBlocked ? "You can't send messages to this user" : "Type a message"}
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          onKeyPress={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSendMessage(e);
+            }
+          }}
+          disabled={isBlocked}
+        />
+        <SendButton
+          onClick={handleSendMessage}
+          disabled={!newMessage.trim() || isBlocked}
+        >
+          <FaPaperPlane />
+        </SendButton>
+      </InputContainer>
+    </MessagesContainer>
   );
 };
 

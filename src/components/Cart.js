@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import QRCode from 'qrcode';
 import Navbar from './Navbar';
@@ -7,281 +7,362 @@ import { getFirestore, collection, addDoc, query, where, getDocs, doc, updateDoc
 import { getAuth } from 'firebase/auth';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { FaTrash, FaShoppingCart, FaUtensils, FaShoppingBag, FaPlus } from 'react-icons/fa';
+import { FaTrash, FaShoppingCart, FaUtensils, FaShoppingBag, FaPlus, FaMicrophone, FaStop, FaPlay, FaPause } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const CartContainer = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+  
+  @media (max-width: 768px) {
+    padding: 15px;
+  }
 `;
 
 const CartItems = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 15px;
 `;
 
 const CartItem = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px;
-  margin: 10px 0;
+  padding: 20px;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  @media (max-width: 768px) {
+    padding: 15px;
+  }
+`;
+
+const ItemDetails = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+
+  @media (max-width: 768px) {
+    gap: 15px;
+  }
 `;
 
 const ItemImage = styled.img`
   width: 80px;
   height: 80px;
+  border-radius: 10px;
   object-fit: cover;
-  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+  @media (max-width: 768px) {
+    width: 60px;
+    height: 60px;
+  }
 `;
 
-const ItemDetails = styled.div`
+const ItemInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 `;
 
-const ItemName = styled.h3``;
+const ItemName = styled.h3`
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2d3436;
 
-const ItemPrice = styled.p``;
+  @media (max-width: 768px) {
+    font-size: 1rem;
+  }
+`;
+
+const ItemPrice = styled.p`
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #6c5ce7;
+
+  @media (max-width: 768px) {
+    font-size: 1rem;
+  }
+`;
+
+const ItemActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 20px;
+
+  @media (max-width: 768px) {
+    gap: 15px;
+  }
+`;
 
 const QuantityControl = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 4px;
+  gap: 8px;
 `;
 
 const QuantityButton = styled.button`
-  background: #f0f0f0;
-  border: none;
-  padding: 5px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  &:hover {
-    background: #e0e0e0;
-  }
-`;
-
-const QuantityDisplay = styled.span``;
-
-const DeleteButton = styled.button`
-  background: #ff4444;
-  color: white;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 5px;
-  cursor: pointer;
-
-  &:hover {
-    background: #cc0000;
-  }
-`;
-
-const PaymentSection = styled.div`
-  margin-top: 20px;
-`;
-
-const PaymentOptions = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-`;
-
-const PaymentOption = styled.div`
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  border: none;
+  background: ${props => props.disabled ? '#e9ecef' : 'white'};
+  color: ${props => props.disabled ? '#adb5bd' : '#2d3436'};
+  border-radius: 6px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  &:hover:not(:disabled) {
+    background: #6c5ce7;
+    color: white;
+  }
+
+  @media (max-width: 768px) {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
+`;
+
+const QuantityDisplay = styled.span`
+  min-width: 24px;
+  text-align: center;
+  font-weight: 600;
+  color: #2d3436;
+  font-size: 1rem;
+`;
+
+const DeleteButton = styled.button`
+  background: none;
+  border: none;
+  color: #e74c3c;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  transition: all 0.2s ease;
+  border-radius: 50%;
+
+  &:hover {
+    background: #fff5f5;
+    color: #c0392b;
+  }
+
+  @media (max-width: 768px) {
+    font-size: 1.1rem;
+    padding: 6px;
+  }
+`;
+
+const EmptyCart = styled.div`
+  text-align: center;
+  padding: 40px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  h2 {
+    color: #2d3436;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  p {
+    color: #636e72;
+    margin-bottom: 25px;
+  }
+
+  svg.cart-icon {
+    font-size: 2.5rem;
+    color: #6c5ce7;
+    margin-bottom: 20px;
+  }
 `;
 
 const OrderSummary = styled.div`
-  margin-top: 20px;
-`;
-
-const TotalAmount = styled.p`
-  font-size: 1.5em;
-  font-weight: bold;
-  text-align: right;
-  margin: 20px 0;
-`;
-
-const PlaceOrderButton = styled.button`
-  width: 100%;
-  padding: 15px;
-  margin-top: 20px;
-  border: none;
-  border-radius: 25px;
-  background: linear-gradient(135deg, #32CD32 0%, #228B22 100%);
-  color: white;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 10px rgba(50, 205, 50, 0.2);
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(50, 205, 50, 0.3);
-    background: linear-gradient(135deg, #3CD63C 0%, #2AA22A 100%);
-  }
-
-  &:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 5px rgba(50, 205, 50, 0.2);
-  }
-
-  &:disabled {
-    background: #cccccc;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-
-  svg {
-    font-size: 1.2rem;
-  }
-`;
-
-const LoadingText = styled.p`
-  font-size: 1.5em;
-  font-weight: bold;
-  text-align: center;
-  margin: 20px 0;
-`;
-
-const ErrorText = styled.p`
-  font-size: 1.5em;
-  font-weight: bold;
-  text-align: center;
-  margin: 20px 0;
-  color: red;
-`;
-
-const EmptyCartContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  text-align: center;
-  min-height: 400px;
+  margin-top: 30px;
+  padding: 25px;
   background: white;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin: 20px;
-`;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-const EmptyCartIcon = styled.div`
-  font-size: 5rem;
-  color: #8a2be2;
-  margin-bottom: 20px;
-  opacity: 0.8;
-`;
-
-const EmptyCartText = styled.h2`
-  color: #333;
-  font-size: 1.8rem;
-  margin-bottom: 10px;
-  font-weight: 500;
-`;
-
-const EmptyCartSubText = styled.p`
-  color: #666;
-  font-size: 1.1rem;
-  margin-bottom: 30px;
-`;
-
-const ShopNowButton = styled.button`
-  padding: 12px 30px;
-  background: linear-gradient(135deg, #8a2be2 0%, #6a0dad 100%);
-  color: white;
-  border: none;
-  border-radius: 25px;
-  font-size: 1.1rem;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 10px rgba(138, 43, 226, 0.2);
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
-    background: linear-gradient(135deg, #9d3cf7 0%, #7b1ec4 100%);
-  }
-
-  &:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 5px rgba(138, 43, 226, 0.2);
-  }
-
-  svg {
+  h3 {
+    margin: 0 0 20px 0;
+    color: #2d3436;
     font-size: 1.2rem;
   }
-`;
 
-const AddMoreButton = styled(Link)`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  background: #f8f4ff;
-  color: blueviolet;
-  text-decoration: none;
-  border-radius: 8px;
-  margin: 15px 0;
-  font-weight: 500;
-  border: 2px dashed blueviolet;
-  transition: all 0.3s ease;
-
-  &:hover {
-    background: #f0e6ff;
-    transform: translateY(-2px);
-  }
-
-  svg {
-    font-size: 1.2rem;
-  }
-`;
-
-const AddressSelect = styled.div`
-  margin: 15px 0;
-`;
-
-const AddressOption = styled.div`
-  padding: 12px;
-  border: 2px solid ${props => props.selected ? 'blueviolet' : '#e0e0e0'};
-  border-radius: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  background: ${props => props.selected ? '#f8f4ff' : 'white'};
-  transition: all 0.2s ease;
-
-  &:hover {
-    border-color: blueviolet;
+  @media (max-width: 768px) {
+    padding: 20px;
+    margin-top: 20px;
   }
 `;
 
 const SummaryItem = styled.div`
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: ${props => props.total ? 'none' : '1px solid #f1f2f6'};
+  font-size: ${props => props.total ? '1.2rem' : '1rem'};
+  font-weight: ${props => props.total ? '600' : '400'};
+  color: ${props => props.total ? '#2d3436' : '#636e72'};
+
+  @media (max-width: 768px) {
+    font-size: ${props => props.total ? '1.1rem' : '0.95rem'};
+    padding: 10px 0;
+  }
+`;
+
+const CheckoutButton = styled.button`
+  width: 100%;
+  padding: 15px;
+  margin-top: 20px;
+  background: #6c5ce7;
+  color: white;
+  border: none;
+  border-radius: 8px;
   font-size: 1.1rem;
-  ${props => props.total && `
-    font-size: 1.3rem;
-    font-weight: bold;
-  `}
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.2);
+
+  &:hover:not(:disabled) {
+    background: #5f50d9;
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+  }
+
+  &:disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 768px) {
+    padding: 12px;
+    font-size: 1rem;
+  }
+`;
+
+const AddressSection = styled.div`
+  margin: 20px 0;
+  padding: 25px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  h3 {
+    margin: 0 0 20px 0;
+    color: #2d3436;
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+
+  @media (max-width: 768px) {
+    padding: 20px;
+    margin: 15px 0;
+  }
+`;
+
+const AddressOption = styled.div`
+  padding: 15px;
+  margin: 10px 0;
+  border: 2px solid ${props => props.selected ? '#6c5ce7' : '#f1f2f6'};
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: ${props => props.selected ? '#f8f7ff' : 'white'};
+
+  &:hover {
+    border-color: #6c5ce7;
+    background: ${props => props.selected ? '#f8f7ff' : '#fafaff'};
+  }
+
+  .primary-badge {
+    display: inline-block;
+    color: #6c5ce7;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-top: 5px;
+    background: #f8f7ff;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  @media (max-width: 768px) {
+    padding: 12px;
+  }
+`;
+
+const AddAddressLink = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #6c5ce7;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-top: 15px;
+  padding: 5px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f8f7ff;
+  }
+
+  svg {
+    font-size: 0.9rem;
+  }
+`;
+
+const BrowseMenuButton = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #6c5ce7;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.2);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+    background: #5f4dd0;
+  }
+
+  svg {
+    font-size: 1.1rem;
+  }
 `;
 
 const formatCurrency = (amount) => {
@@ -300,6 +381,7 @@ const Cart = () => {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const auth = getAuth();
   const db = getFirestore();
+  const storage = getStorage();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -313,9 +395,14 @@ const Cart = () => {
 
       const unsubscribe = onSnapshot(cartQuery, (snapshot) => {
         const items = [];
+        let cartTotal = 0;
+        
         snapshot.forEach((doc) => {
-          items.push({ id: doc.id, ...doc.data() });
+          const item = { id: doc.id, ...doc.data() };
+          items.push(item);
+          cartTotal += item.price * item.quantity;
         });
+        
         setCartItems(items);
         setLoading(false);
       });
@@ -362,27 +449,32 @@ const Cart = () => {
     updateQuantity(itemId, 0);
   };
 
-  const handlePlaceOrder = async () => {
+  const placeOrder = async () => {
     if (!selectedAddressId) {
       toast.error('Please select a delivery address');
       return;
     }
 
-    setIsSubmitting(true);
     try {
-      const selectedAddress = addresses.find(addr => addr.id === selectedAddressId);
+      setIsSubmitting(true);
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const userData = userDoc.data();
       
-      const orderRef = await addDoc(collection(db, 'orders'), {
+      const orderData = {
         userId: auth.currentUser.uid,
         userEmail: auth.currentUser.email,
+        userName: userData?.name || '',
+        userPhone: userData?.phone || '',
         items: cartItems,
         total: calculateTotal(),
-        address: selectedAddress.address,
         status: 'pending',
         timestamp: serverTimestamp(),
+        address: addresses.find(addr => addr.id === selectedAddressId)?.address || '',
         seen: false
-      });
+      };
 
+      await addDoc(collection(db, 'orders'), orderData);
+      
       // Clear cart after successful order
       const batch = writeBatch(db);
       cartItems.forEach(item => {
@@ -395,7 +487,7 @@ const Cart = () => {
       navigate('/orders');
     } catch (error) {
       console.error('Error placing order:', error);
-      toast.error('Failed to place order. Please try again.');
+      toast.error('Failed to place order');
     } finally {
       setIsSubmitting(false);
     }
@@ -405,37 +497,63 @@ const Cart = () => {
     return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
 
+  const clearEntireCart = async () => {
+    try {
+      const batch = writeBatch(db);
+      const cartQuery = query(collection(db, 'cart'), where('userId', '==', auth.currentUser.uid));
+      const cartDocs = await getDocs(cartQuery);
+      
+      cartDocs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+      toast.success('Cart cleared successfully');
+    } catch (error) {
+      console.error('Error clearing cart:', error);
+      toast.error('Failed to clear cart');
+    }
+  };
+
   return (
     <>
       <Navbar />
       <CartContainer>
-        <h2>Shopping Cart</h2>
         {loading ? (
-          <LoadingText>Loading cart...</LoadingText>
+          <EmptyCart>
+            <h2>Loading your cart...</h2>
+          </EmptyCart>
         ) : error ? (
-          <ErrorText>{error}</ErrorText>
+          <EmptyCart>
+            <h2>{error}</h2>
+          </EmptyCart>
         ) : cartItems.length === 0 ? (
-          <EmptyCartContainer>
-            <EmptyCartIcon>
-              <FaShoppingCart />
-            </EmptyCartIcon>
-            <EmptyCartText>Your cart is empty</EmptyCartText>
-            <EmptyCartSubText>Add some delicious items to your cart!</EmptyCartSubText>
-            <ShopNowButton onClick={() => navigate('/')}>
-              <FaUtensils /> Order Now
-            </ShopNowButton>
-          </EmptyCartContainer>
+          <EmptyCart>
+            <FaShoppingCart className="cart-icon" />
+            <h2>Your cart is empty</h2>
+            <p>Add some delicious items to your cart</p>
+            <BrowseMenuButton to="/">
+              <FaUtensils /> Browse Menu
+            </BrowseMenuButton>
+          </EmptyCart>
         ) : (
           <>
             <CartItems>
-              {cartItems.map((item) => (
+              {cartItems.map(item => (
                 <CartItem key={item.id}>
-                  <ItemImage src={item.image} alt={item.name} />
                   <ItemDetails>
-                    <ItemName>{item.name}</ItemName>
-                    <ItemPrice>₹{item.price}</ItemPrice>
+                    <ItemImage src={item.image} alt={item.name} />
+                    <ItemInfo>
+                      <ItemName>{item.name}</ItemName>
+                      <ItemPrice>₹{item.price}</ItemPrice>
+                    </ItemInfo>
+                  </ItemDetails>
+                  <ItemActions>
                     <QuantityControl>
-                      <QuantityButton onClick={() => updateQuantity(item.id, item.quantity - 1)}>
+                      <QuantityButton 
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        disabled={item.quantity <= 1}
+                      >
                         -
                       </QuantityButton>
                       <QuantityDisplay>{item.quantity}</QuantityDisplay>
@@ -443,20 +561,16 @@ const Cart = () => {
                         +
                       </QuantityButton>
                     </QuantityControl>
-                  </ItemDetails>
-                  <DeleteButton onClick={() => removeFromCart(item.id)}>
-                    <FaTrash />
-                  </DeleteButton>
+                    <DeleteButton onClick={() => removeFromCart(item.id)}>
+                      <FaTrash />
+                    </DeleteButton>
+                  </ItemActions>
                 </CartItem>
               ))}
             </CartItems>
 
-            <AddMoreButton to="/">
-              <FaPlus /> Add More Items
-            </AddMoreButton>
-
-            <AddressSelect>
-              <h3>Select Delivery Address</h3>
+            <AddressSection>
+              <h3>Delivery Address</h3>
               {addresses.map(addr => (
                 <AddressOption
                   key={addr.id}
@@ -465,25 +579,16 @@ const Cart = () => {
                 >
                   {addr.address}
                   {addr.isPrimary && (
-                    <div style={{ color: 'blueviolet', fontSize: '12px', marginTop: '5px' }}>
+                    <div className="primary-badge">
                       Primary Address
                     </div>
                   )}
                 </AddressOption>
               ))}
-              <Link 
-                to="/profile" 
-                style={{ 
-                  display: 'block', 
-                  color: 'blueviolet', 
-                  marginTop: '10px',
-                  textDecoration: 'none',
-                  fontSize: '14px'
-                }}
-              >
-                <FaPlus style={{ marginRight: '5px' }} /> Add New Address
-              </Link>
-            </AddressSelect>
+              <AddAddressLink to="/profile">
+                <FaPlus /> Add New Address
+              </AddAddressLink>
+            </AddressSection>
 
             <OrderSummary>
               <h3>Order Summary</h3>
@@ -501,8 +606,8 @@ const Cart = () => {
               </SummaryItem>
             </OrderSummary>
 
-            <PlaceOrderButton
-              onClick={handlePlaceOrder}
+            <CheckoutButton
+              onClick={placeOrder}
               disabled={isSubmitting || !selectedAddressId}
             >
               {isSubmitting ? (
@@ -512,7 +617,7 @@ const Cart = () => {
                   <FaShoppingBag /> Place Order
                 </>
               )}
-            </PlaceOrderButton>
+            </CheckoutButton>
           </>
         )}
       </CartContainer>

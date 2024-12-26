@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read and write their own cart items
+    match /cart/{cartItem} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Allow users to read and write their own orders
+    match /orders/{orderId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.token.email == 'jaydevswebpannel@gmail.com'
+      );
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.token.email == 'jaydevswebpannel@gmail.com'
+      );
+      allow delete: if request.auth != null && 
+        request.auth.token.email == 'jaydevswebpannel@gmail.com';
+    }
+    
+    // Allow users to read all menu items
+    match /menu/{menuItem} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        request.auth.token.email == 'jaydevswebpannel@gmail.com';
+    }
+    
+    // Allow users to manage their own profiles
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow users to read and write their own reviews
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+  }
+}

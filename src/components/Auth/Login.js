@@ -12,7 +12,7 @@ const LoginContainer = styled.div`
   align-items: center;
   min-height: 100vh;
   padding: 20px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: #f8f9fa;
 `;
 
 const LoginForm = styled.form`
@@ -32,12 +32,12 @@ const LoginForm = styled.form`
     left: 0;
     right: 0;
     height: 5px;
-    background: linear-gradient(90deg, #ff9a9e 0%, #fad0c4 99%, #fad0c4 100%);
+    background: blueviolet;
   }
 
   h2 {
     margin: 0 0 30px;
-    color: #333;
+    color: blueviolet;
     font-size: 28px;
     font-weight: 600;
     text-align: center;
@@ -69,9 +69,9 @@ const Input = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #ff9a9e;
+    border-color: blueviolet;
     background: white;
-    box-shadow: 0 0 0 3px rgba(255, 154, 158, 0.1);
+    box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.1);
   }
 
   &::placeholder {
@@ -81,31 +81,23 @@ const Input = styled.input`
 
 const Button = styled.button`
   width: 100%;
-  padding: 14px;
-  background: linear-gradient(90deg, #ff9a9e 0%, #fad0c4 99%, #fad0c4 100%);
+  padding: 12px;
+  background: blueviolet;
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  margin-bottom: 20px;
+  transition: opacity 0.2s;
 
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 7px 14px rgba(0,0,0,0.1);
-  }
-
-  &:active {
-    transform: translateY(1px);
+    opacity: 0.9;
   }
 
   &:disabled {
     background: #ccc;
     cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
   }
 `;
 
@@ -129,7 +121,7 @@ const SuccessText = styled(ErrorText)`
 const ForgotPasswordLink = styled.button`
   background: none;
   border: none;
-  color: #ff9a9e;
+  color: blueviolet;
   text-decoration: none;
   cursor: pointer;
   font-size: 14px;
@@ -139,30 +131,22 @@ const ForgotPasswordLink = styled.button`
   transition: all 0.3s ease;
 
   &:hover {
-    color: #ff7e82;
+    color: #7a0bc0;
     text-decoration: underline;
   }
 `;
 
-const SignupLink = styled(Link)`
-  display: block;
-  text-align: center;
-  color: #666;
+const StyledLink = styled(Link)`
+  color: blueviolet;
   text-decoration: none;
-  font-size: 14px;
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid #eee;
-
-  span {
-    color: #ff9a9e;
-    font-weight: 500;
-    
-    &:hover {
-      text-decoration: underline;
-    }
+  font-weight: 500;
+  
+  &:hover {
+    text-decoration: underline;
   }
 `;
+
+const SignupLink = StyledLink;
 
 const OrDivider = styled.div`
   display: flex;

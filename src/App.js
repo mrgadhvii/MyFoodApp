@@ -10,11 +10,19 @@ import Home from './components/Home';
 import Cart from './components/Cart';
 import Chat from './components/Chat';
 import Profile from './components/Profile';
+import ProfileSettings from './components/Profile/ProfileSettings';
 import Orders from './components/Orders';
 import ProtectedRoute from './components/ProtectedRoute';
 import Loader from './components/Loader';
 import Notifications from './components/Notifications';
 import Reviews from './components/Reviews';
+import AdminPanel from './components/Admin/AdminPanel';
+import AdminNav from './components/Admin/AdminNav';
+import AdminRoute from './components/Admin/AdminRoute';
+import AdminOrders from './components/Admin/Orders';
+import AdminProducts from './components/Admin/Products';
+import AdminUsers from './components/Admin/Users';
+import AdminSettings from './components/Admin/Settings';
 
 const GlobalStyle = createGlobalStyle`
   @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
@@ -116,9 +124,15 @@ function App() {
             <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/profile/settings" element={<ProfileSettings />} />
             <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/reviews" element={<Reviews />} />
+            <Route path="/admin" element={<AdminRoute><AdminNav /><AdminPanel /></AdminRoute>} />
+            <Route path="/admin/orders" element={<AdminRoute><AdminNav /><AdminOrders /></AdminRoute>} />
+            <Route path="/admin/products" element={<AdminRoute><AdminNav /><AdminProducts /></AdminRoute>} />
+            <Route path="/admin/users" element={<AdminRoute><AdminNav /><AdminUsers /></AdminRoute>} />
+            <Route path="/admin/settings" element={<AdminRoute><AdminNav /><AdminSettings /></AdminRoute>} />
           </Routes>
         </AppContainer>
       </div>

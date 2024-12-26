@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, addDoc, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, addDoc, orderBy, serverTimestamp, writeBatch, getDocs } from 'firebase/firestore';
 import { format } from 'date-fns';
 import Navbar from './Navbar';
 import { toast } from 'react-toastify';
 import ReviewDialog from './ReviewDialog';
-import { FaStar } from 'react-icons/fa';
+import { FaStar, FaPlay, FaPause, FaPhoneAlt, FaEnvelope, FaUser, FaMapMarkerAlt } from 'react-icons/fa';
 
 const OrdersContainer = styled.div`
   max-width: 1200px;
@@ -68,6 +68,28 @@ const OrderItem = styled.div`
   justify-content: space-between;
   margin: 5px 0;
   color: #666;
+`;
+
+const UserInfoSection = styled.div`
+  margin: 15px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+`;
+
+const UserInfoItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #666;
+  font-size: 0.9rem;
+
+  svg {
+    color: blueviolet;
+  }
 `;
 
 const ActionButton = styled.button`
@@ -145,15 +167,121 @@ const ReviewButton = styled.button`
   }
 `;
 
+const ClearAllButton = styled.button`
+  padding: 10px 20px;
+  margin-bottom: 20px;
+  border: none;
+  border-radius: 25px;
+  background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(255, 68, 68, 0.2);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 5px rgba(255, 68, 68, 0.2);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+`;
+
+const OrdersHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`;
+
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [isClearing, setIsClearing] = useState(false);
   const auth = getAuth();
   const db = getFirestore();
   const isOwner = auth.currentUser?.email === 'jaydevswebpannel@gmail.com';
+
+  useEffect(() => {
+    // Cleanup audio on component unmount
+    return () => {
+    };
+  }, []);
+
+  const handleStatusChange = async (orderId, userId, newStatus) => {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { 
+        status: newStatus,
+        lastUpdated: serverTimestamp()
+      });
+
+      // Create notification for status change
+      const notificationsRef = collection(db, 'notifications');
+      await addDoc(notificationsRef, {
+        userId: userId,
+        type: 'ORDER_STATUS',
+        orderId: orderId,
+        status: newStatus,
+        read: false,
+        timestamp: serverTimestamp()
+      });
+
+      if (newStatus === 'completed') {
+        // Update order to indicate it can be reviewed
+        await updateDoc(orderRef, {
+          canReview: true,
+          reviewed: false
+        });
+      }
+
+      toast.success(`Order status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      toast.error('Failed to update order status');
+    }
+  };
+
+  const handleReviewClick = (order) => {
+    setSelectedOrder(order);
+    setShowReviewDialog(true);
+  };
+
+  const clearAllOrders = async () => {
+    if (!isOwner) return;
+    
+    try {
+      setIsClearing(true);
+      const ordersRef = collection(db, 'orders');
+      const snapshot = await getDocs(ordersRef);
+      
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      toast.success('All orders cleared successfully');
+    } catch (error) {
+      console.error('Error clearing orders:', error);
+      toast.error('Failed to clear orders');
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   useEffect(() => {
     let unsubscribe;
@@ -263,45 +391,6 @@ const Orders = () => {
     };
   }, [auth.currentUser, db, isOwner]);
 
-  const handleStatusChange = async (orderId, userId, newStatus) => {
-    try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, { 
-        status: newStatus,
-        lastUpdated: serverTimestamp()
-      });
-
-      // Create notification for status change
-      const notificationsRef = collection(db, 'notifications');
-      await addDoc(notificationsRef, {
-        userId: userId,
-        type: 'ORDER_STATUS',
-        orderId: orderId,
-        status: newStatus,
-        read: false,
-        timestamp: serverTimestamp()
-      });
-
-      if (newStatus === 'completed') {
-        // Update order to indicate it can be reviewed
-        await updateDoc(orderRef, {
-          canReview: true,
-          reviewed: false
-        });
-      }
-
-      toast.success(`Order status updated to ${newStatus}`);
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      toast.error('Failed to update order status');
-    }
-  };
-
-  const handleReviewClick = (order) => {
-    setSelectedOrder(order);
-    setShowReviewDialog(true);
-  };
-
   if (loading) {
     return (
       <>
@@ -329,8 +418,22 @@ const Orders = () => {
     <>
       <Navbar />
       <OrdersContainer>
-        <h2>{isOwner ? 'All Orders' : 'My Orders'}</h2>
-        
+        <OrdersHeader>
+          <h2>{isOwner ? 'All Orders' : 'Your Orders'}</h2>
+          {isOwner && (
+            <ClearAllButton 
+              onClick={() => {
+                if (window.confirm('Are you sure you want to clear all orders? This action cannot be undone.')) {
+                  clearAllOrders();
+                }
+              }}
+              disabled={isClearing || orders.length === 0}
+            >
+              {isClearing ? 'Clearing...' : 'Clear All Orders'}
+            </ClearAllButton>
+          )}
+        </OrdersHeader>
+
         {orders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
             {isOwner ? 'No orders yet' : 'You haven\'t placed any orders yet'}
@@ -341,33 +444,44 @@ const Orders = () => {
               <OrderHeader>
                 <OrderTitle>Order #{order.id.slice(-6)}</OrderTitle>
                 <OrderStatus status={order.status}>
-                  {order.status}
+                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                 </OrderStatus>
               </OrderHeader>
+
+              {isOwner && (
+                <UserInfoSection>
+                  <UserInfoItem>
+                    <FaUser />
+                    <span>{order.userName || 'No name provided'}</span>
+                  </UserInfoItem>
+                  <UserInfoItem>
+                    <FaEnvelope />
+                    <span>{order.userEmail}</span>
+                  </UserInfoItem>
+                  <UserInfoItem>
+                    <FaPhoneAlt />
+                    <span>{order.userPhone || 'No phone provided'}</span>
+                  </UserInfoItem>
+                  <UserInfoItem>
+                    <FaMapMarkerAlt />
+                    <span>{order.address}</span>
+                  </UserInfoItem>
+                </UserInfoSection>
+              )}
+
               <OrderDetails>
-                <OrderItem>
-                  <span>Customer Email:</span>
-                  <span>{order.userEmail}</span>
-                </OrderItem>
-                <OrderItem>
-                  <span>Order Time:</span>
-                  <span>{format(order.timestamp, 'MMM dd, yyyy HH:mm')}</span>
-                </OrderItem>
-                <OrderItem>
-                  <span>Total Amount:</span>
+                {order.items.map((item, index) => (
+                  <OrderItem key={index}>
+                    <span>{item.name} x {item.quantity}</span>
+                    <span>₹{item.price * item.quantity}</span>
+                  </OrderItem>
+                ))}
+                <OrderItem style={{ fontWeight: 'bold', marginTop: '10px' }}>
+                  <span>Total</span>
                   <span>₹{order.total}</span>
                 </OrderItem>
-                <OrderItem>
-                  <span>Delivery Address:</span>
-                  <span>{order.address}</span>
-                </OrderItem>
-                <OrderItem>
-                  <span>Items:</span>
-                  <span>
-                    {order.items?.map(item => `${item.name} (${item.quantity})`).join(', ')}
-                  </span>
-                </OrderItem>
               </OrderDetails>
+
               {isOwner ? (
                 <ActionButtons>
                   {order.status === 'pending' && (
@@ -417,13 +531,38 @@ const Orders = () => {
 
       {showReviewDialog && selectedOrder && (
         <ReviewDialog
-          orderId={selectedOrder.id}
-          orderItems={selectedOrder.items}
-          userId={selectedOrder.userId}
-          userName={selectedOrder.userEmail}
+          order={selectedOrder}
           onClose={() => {
             setShowReviewDialog(false);
             setSelectedOrder(null);
+          }}
+          onSubmit={async (rating, review) => {
+            try {
+              // Add review to reviews collection
+              const reviewsRef = collection(db, 'reviews');
+              await addDoc(reviewsRef, {
+                orderId: selectedOrder.id,
+                userId: auth.currentUser.uid,
+                itemId: selectedOrder.items[0].id, // Assuming single item orders for now
+                rating,
+                review,
+                userName: selectedOrder.userName,
+                timestamp: serverTimestamp()
+              });
+
+              // Update order to mark as reviewed
+              const orderRef = doc(db, 'orders', selectedOrder.id);
+              await updateDoc(orderRef, {
+                reviewed: true
+              });
+
+              toast.success('Thank you for your review!');
+              setShowReviewDialog(false);
+              setSelectedOrder(null);
+            } catch (error) {
+              console.error('Error submitting review:', error);
+              toast.error('Failed to submit review. Please try again.');
+            }
           }}
         />
       )}
