@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    {"source": "/(.*)", "destination": "/"}
+  ]
   "builds": [
     {
       "src": "package.json",
@@ -10,8 +13,8 @@
       "NODE_ENV": "production"
     },
     "commands": {
-      "install": "npm install",       // Custom install command
-      "build": "npm run build"        // Your build command
+      "install": "npm install",     
+      "build": "npm run build"        
     }
   }
 }
